@@ -44,6 +44,8 @@ string secret = "{webhook secret}";
 
 using var reader = new StreamReader(HttpContext.Request.Body);
 var payload = await reader.ReadToEndAsync();
+// Dont pass the object into the actual API method as then we cant read the body to get the payload, this needs manually deserializing
+// You will also need to create your own BitbucketRepoPush class, this can be easily done by logging the payload and pasting it into an online converter
 BitbucketRepoPush push = JsonConvert.DeserializeObject<BitbucketRepoPush>(payload);
 
 // Get the Bitbucket signature from the request headers
@@ -56,7 +58,7 @@ using var sha256 = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
 var digest = sha256.ComputeHash(Encoding.UTF8.GetBytes(payload));
 var calculatedSignature = "sha256=" + BitConverter.ToString(digest).Replace("-", "").ToLower();
 
- // Compare the calculated signature with the given signature
+ // Compare the calculated signature with the signature provided by bitbucket
 if (calculatedSignature != bitbucketSignature)
 {
     //Incorrect signature
@@ -69,4 +71,7 @@ if (calculatedSignature != bitbucketSignature)
 ## Auto deploy to IIS
 
 ## Considerations
+
+## Author
+- [SpikeThatMike](https://spikethatmike.dev)
 
