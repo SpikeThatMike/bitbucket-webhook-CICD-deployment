@@ -1,10 +1,10 @@
 # Bitbucket Webhook CICD Deployment
-How to setup CI/CD based off a bitbucket webhook for auto deployment to your LIVE or DEV environments
-This is for auto deploying .NET applications, however this could be easily translated to other languages
+How to setup CI/CD based off a bitbucket webhook for auto deployment to your LIVE or DEV environments.
+This is for auto deploying .NET applications, however this could be easily translated to other languages.
 
 
 ## Requirements
-- A server which can receive external requests
+- A domain to create an A record to point towards your server hosting the API
 - Ability to host an API to receive the webhook requests
 
 
@@ -93,11 +93,6 @@ if (project == null)
 
 ### Call a powershell script
 ```
-var parameters = new Dictionary<string, object>()
-{
-   { "ExampleParamter", "test" },
-};
-
 // Create the runspace
 using var runspace = RunspaceFactory.CreateRunspace();
 runspace.Open();
@@ -110,6 +105,11 @@ using PowerShell ps = PowerShell.Create(runspace);
 //ps.Commands.Clear();
  
 ps.AddCommand("path\to\powershell.ps1");
+
+var parameters = new Dictionary<string, object>()
+{
+   { "ExampleParamter", "test" },
+};
 
 // Add the parameters to the script
 foreach (var param in parameters)
@@ -128,54 +128,57 @@ var results = await ps.InvokeAsync();
 runspace.Close();
 ```
 
-
 ## Auto deploy to IIS Powershell Script Example
 ```
 # Powershell parameters
 param (
+    [string]$GitBranch, // development
     [string]$IISSiteName, //Test API
     [string]$IISFolder, // C:\IIS\wwwroot\TEST API
     [string]$RepoFolder, // C:\Repos\
     [string]$NetBuildPath, // Test.API\bin\Release\net7.0\publish
-    [string]$GitURL, // https://{username}:{app_password}@bitbucket.org/user/{repo}.git
-    [string]$GitBranch, // development
 )
 
 $ProjectName = [System.IO.Path]::GetFileNameWithoutExtension($GitURL)
 $ProjectPath = "$RepoFolder\$ProjectName\"
+$GitURL = "https://{username}:{app_password}@bitbucket.org/{user}/$ProjectName.git";
 
-# Step 1 - Delete the existing folder and clone new repo & branch
+# Step 1 - Delete the existing folder if it exists then clone the repo & specified branch
 if (Test-Path $ProjectPath) {
     Remove-Item "$ProjectPath\*" -Recurse -Force
 }
 git clone $GitURL --branch $GitBranch "$ProjectPath"
 
 
-# Step 2 - Build the .NET project
+# Step 2 - Build the project
 dotnet publish $ProjectPath -c Release
 
-
+# Import the IISAdministration module as it's the newer IIS tool rather than WebAdministration
 Import-Module IISAdministration
+
 # Step 3 - Stop the IIS instance
 Stop-IISSite -Name "$IISSiteName" -Confirm:$false # Remove the confirmation
 
-Start-Sleep -Seconds 5  # Wait 5 seconds in case of a slow IIS shutdown
+# Wait 5 seconds in case of a slow IIS shutdown, this may need increasing if your apps have a slow shutdown
+# Rather than doing this, you could implement a while loop using the Get-IISSite -Name "$IISSiteName" to wait until it has stopped
+Start-Sleep -Seconds 5 
 
 
-# Step 4 - Delete all files in the hosted folder
+# Step 4 - Delete all the files in the hosted folder
 Remove-Item "$IISFolder\*" -Recurse -Force
 
 
-# Step 5 - Copy build files to the hosted folder
+# Step 5 - Copy the build files to the hosted folder
 Copy-Item -Path "$ProjectPath\$NetBuildPath\*" -Destination $IISFolder -Recurse -Force
 
-Start-Sleep -Seconds 5  # Wait 5 seconds so all of the files are copied properly
-
+# Wait an additional 3 seconds just in case the files are fully copied over
+Start-Sleep -Seconds 3
 
 
 # Step 6 - Start the IIS instance
 Start-IISSite -Name "$IISSiteName"
 
+#You can also add another check here to see if the IIS instance has started using Get-IISSite -Name "$IISSiteName"
 
 # Step 7 - Exit script
 exit 0
@@ -183,7 +186,7 @@ exit 0
 
 
 ## Considerations
-
+- Instead of using the GIT username and app password, it will be more secure to use SSH
 
 ## Author
 - [SpikeThatMike](https://spikethatmike.dev)
